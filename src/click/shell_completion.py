@@ -211,7 +211,7 @@ complete --no-files --command %(prog_name)s --arguments \
 # COMP_WORDS so the Python side can reuse the same shlex-based splitting
 # used by the bash/zsh completers.
 _SOURCE_POWERSHELL = """\
-Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName '%(prog_name)s' -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $prev_complete = $env:%(complete_var)s
@@ -227,7 +227,7 @@ Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
     }
 
     try {
-        $response = & %(prog_name)s 2>$null
+        $response = & '%(prog_name)s' 2>$null
     } finally {
         $env:%(complete_var)s = $prev_complete
         $env:COMP_WORDS = $prev_words
@@ -522,8 +522,13 @@ class PowerShellComplete(ShellComplete):
     name: t.ClassVar[str] = "powershell"
     source_template: t.ClassVar[str] = _SOURCE_POWERSHELL
 
+    def source_vars(self) -> _SourceVarsDict:
+        vars = super().source_vars()
+        vars["prog_name"] = vars["prog_name"].replace("'", "''")
+        return vars
+
     def get_completion_args(self) -> tuple[list[str], str]:
-        cwords = split_arg_string(os.environ["COMP_WORDS"])
+        cwords = split_powershell_arg_string(os.environ["COMP_WORDS"])
         cword = int(os.environ["COMP_CWORD"])
         args = cwords[1:cword]
 
@@ -627,6 +632,90 @@ def split_arg_string(string: str) -> list[str]:
         # the partial token as-is. The quote or escape character is in
         # lex.state, not lex.token.
         out.append(lex.token)
+
+    return out
+
+
+def split_powershell_arg_string(string: str) -> list[str]:
+    """Split an argument string following PowerShell syntax rules, without
+    failing if the string is incomplete.
+
+    Unlike POSIX shells, backslash is not an escape character in PowerShell;
+    the backtick (`` ` ``) is used for escaping. Single quotes preserve characters
+    literally except for ``''`` which represents an escaped single quote.
+
+    :param string: String to split.
+
+    .. versionadded:: 8.6.0
+    """
+    out: list[str] = []
+    current: list[str] = []
+    in_token = False
+    in_single = False
+    in_double = False
+    i = 0
+    n = len(string)
+
+    while i < n:
+        c = string[i]
+        if in_single:
+            in_token = True
+            if c == "'":
+                if i + 1 < n and string[i + 1] == "'":
+                    current.append("'")
+                    i += 2
+                    continue
+                else:
+                    in_single = False
+                    i += 1
+                    continue
+            else:
+                current.append(c)
+                i += 1
+        elif in_double:
+            in_token = True
+            if c == '"':
+                in_double = False
+                i += 1
+                continue
+            elif c == "`":
+                if i + 1 < n:
+                    current.append(string[i + 1])
+                    i += 2
+                else:
+                    i += 1
+            else:
+                current.append(c)
+                i += 1
+        else:
+            if c in (" ", "\t", "\r", "\n"):
+                if in_token:
+                    out.append("".join(current))
+                    current = []
+                    in_token = False
+                i += 1
+            elif c == "'":
+                in_token = True
+                in_single = True
+                i += 1
+            elif c == '"':
+                in_token = True
+                in_double = True
+                i += 1
+            elif c == "`":
+                in_token = True
+                if i + 1 < n:
+                    current.append(string[i + 1])
+                    i += 2
+                else:
+                    i += 1
+            else:
+                in_token = True
+                current.append(c)
+                i += 1
+
+    if in_token:
+        out.append("".join(current))
 
     return out
 
