@@ -615,3 +615,26 @@ def test_powershell_format_completion_escapes_help():
     # produced by ZshComplete.
     item = CompletionItem("--at")
     assert pc.format_completion(item) == "plain\n--at\n_"
+
+
+def test_powershell_source_quotes_prog_name():
+    pc = PowerShellComplete(Command("x"), {}, "my cli", "_X_COMPLETE")
+    src = pc.source()
+    assert "-CommandName 'my cli'" in src
+    assert "& 'my cli' 2>$null" in src
+
+
+def test_powershell_source_escapes_single_quotes_in_prog_name():
+    pc = PowerShellComplete(Command("x"), {}, "my'cli", "_X_COMPLETE")
+    src = pc.source()
+    assert "-CommandName 'my''cli'" in src
+    assert "& 'my''cli' 2>$null" in src
+
+
+def test_powershell_get_completion_args_preserves_windows_paths(monkeypatch):
+    monkeypatch.setenv("COMP_WORDS", r"mycli sub C:\Users\ann\doc")
+    monkeypatch.setenv("COMP_CWORD", "2")
+    pc = PowerShellComplete(Command("x"), {}, "mycli", "_X_COMPLETE")
+    args, incomplete = pc.get_completion_args()
+    assert args == ["sub"]
+    assert incomplete == r"C:\Users\ann\doc"
