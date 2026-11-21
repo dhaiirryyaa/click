@@ -2,6 +2,8 @@
 
 Unreleased
 
+- Fix PowerShell completion argument splitting so Windows paths containing
+  backslashes are not mangled by POSIX escape rules. {issue}`3915`
 - Drop support for Python 3.10. {pr}`3920` {pr}`3921`
 - A parameter name that is not a valid Python identifier, or that is a Python
   keyword, is deprecated and raises `TypeError` in Click 9.0. {pr}`3866`
